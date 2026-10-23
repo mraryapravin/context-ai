@@ -1,6 +1,6 @@
 type StatCardProps = {
     title: string;
-    value: number;
+    value: number | string;
 };
 
 export default function StatCard({title, value}: StatCardProps ) {
