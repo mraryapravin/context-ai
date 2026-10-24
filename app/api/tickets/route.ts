@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { classifyTicket } from "@/lib/ai/classify-ticket";
 
 // GET — Only logged-in staff can view tickets
 export async function GET() {
@@ -35,9 +36,26 @@ export async function GET() {
 // POST — Customers can submit tickets without logging in
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    let body: unknown;
 
-    const { title, description, priority } = body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON request" },
+        { status: 400 }
+      );
+    }
+
+    if (typeof body !== "object" || body === null) {
+      return NextResponse.json(
+        { error: "Invalid request body" },
+        { status: 400 }
+      );
+    }
+
+    const input = body as Record<string, unknown>;
+    const { title, description, priority } = input;
 
     if (
       typeof title !== "string" ||
@@ -51,28 +69,52 @@ export async function POST(request: Request) {
       );
     }
 
-    if (title.trim().length > 200) {
+    const cleanTitle = title.trim();
+    const cleanDescription = description.trim();
+
+    if (cleanTitle.length > 200) {
       return NextResponse.json(
         { error: "Title must be 200 characters or fewer" },
         { status: 400 }
       );
     }
 
-    if (description.trim().length > 5000) {
+    if (cleanDescription.length > 5000) {
       return NextResponse.json(
         { error: "Description must be 5000 characters or fewer" },
         { status: 400 }
       );
     }
 
+    const customerPriority =
+      priority === "LOW" || priority === "HIGH"
+        ? priority
+        : "MEDIUM";
+
+    // Attempt AI classification before saving the ticket.
+    // If the AI service fails, the customer can still submit.
+    let classification = null;
+
+    try {
+      classification = await classifyTicket(
+        cleanTitle,
+        cleanDescription
+      );
+    } catch (error) {
+      console.error("AI classification failed:", error);
+    }
+
     const ticket = await prisma.ticket.create({
       data: {
-        title: title.trim(),
-        description: description.trim(),
-        priority:
-          priority === "LOW" || priority === "HIGH"
-            ? priority
-            : "MEDIUM",
+        title: cleanTitle,
+        description: cleanDescription,
+        priority: customerPriority,
+
+        aiUrgency: classification?.urgency ?? null,
+        aiSentiment: classification?.sentiment ?? null,
+        aiEscalationRisk:
+          classification?.escalationRisk ?? null,
+        aiReason: classification?.reason ?? null,
       },
     });
 
