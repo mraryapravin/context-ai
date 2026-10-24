@@ -22,16 +22,8 @@ async function ProtectedOverview() {
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <Topbar />
 
-        <main className="flex-1 p-4">
-          <h2 className="text-2xl font-semibold text-white">
-            Your support dashboard
-          </h2>
-
-          <p className="mt-2 text-white/80">
-            Manage and prioritise customer support tickets.
-          </p>
-
-          <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
+        <main className="flex-1">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <Suspense
               fallback={
                 <>
