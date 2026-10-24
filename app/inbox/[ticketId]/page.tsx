@@ -6,6 +6,7 @@ import { redirect, notFound } from "next/navigation";
 
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
+import StatusSelector from "@/components/tickets/StatusSelector";
 import { prisma } from "@/lib/prisma";
 
 type TicketPageProps = {
@@ -94,9 +95,10 @@ async function ProtectedTicketDetails({
                 Current Status
               </h3>
 
-              <span className="mt-3 inline-block rounded-lg bg-blue-100 px-4 py-2 text-sm font-medium text-blue-800">
-                {ticket.status.replaceAll("_", " ")}
-              </span>
+              <StatusSelector
+                ticketId={ticket.id}
+                currentStatus={ticket.status}
+              />
             </div>
 
             <div className="mt-8 border-t border-gray-200 pt-6">

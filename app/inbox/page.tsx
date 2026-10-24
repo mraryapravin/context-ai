@@ -8,10 +8,6 @@ import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import { prisma } from "@/lib/prisma";
 
-
-
-
-
 const priorityStyles: Record<string, string> = {
   HIGH: "border-red-400 bg-red-400/20 hover:border-blue-500 hover:bg-blue-100",
   MEDIUM:
@@ -19,19 +15,19 @@ const priorityStyles: Record<string, string> = {
   LOW: "border-green-400 bg-green-500/20 hover:border-blue-500 hover:bg-blue-100",
 };
 
-
-
-
-
-
-
-
-
 const priorityBadgeStyles: Record<string, string> = {
   HIGH: "bg-red-200 text-red-800",
   MEDIUM: "bg-orange-200 text-orange-800",
   LOW: "bg-green-200 text-green-800",
 };
+
+function formatStatus(status: string) {
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 async function TicketList() {
   const tickets = await prisma.ticket.findMany({
@@ -69,7 +65,7 @@ async function TicketList() {
 
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                 <span className="inline-block rounded-md bg-white/70 px-3 py-1 font-medium text-gray-700">
-                  {ticket.status}
+                  {formatStatus(ticket.status)}
                 </span>
 
                 <span
@@ -104,7 +100,6 @@ async function ProtectedInbox() {
         <Topbar />
 
         <main className="flex-1">
-
           <Suspense
             fallback={
               <p className="mt-8 text-white">Loading tickets...</p>
