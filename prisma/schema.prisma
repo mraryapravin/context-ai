@@ -21,6 +21,9 @@ model Ticket {
   aiSentiment      String?
   aiEscalationRisk String?
   aiReason         String?
+  aiSummary                String?
+  aiRecommendedActions     String[] @default([])
+  aiCommunicationGuidance  String?
 
   // Calculated priority score
   priorityScore Float?

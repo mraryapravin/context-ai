@@ -115,6 +115,10 @@ export async function POST(request: Request) {
         aiEscalationRisk:
           classification?.escalationRisk ?? null,
         aiReason: classification?.reason ?? null,
+        aiSummary: classification?.summary ?? null,
+        aiRecommendedActions: classification?.recommendedActions ?? [],
+        aiCommunicationGuidance:
+        classification?.communicationGuidance ?? null,
       },
     });
 
