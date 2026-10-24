@@ -1,5 +1,8 @@
 
 import { Suspense } from "react";
+import { auth } from "@/auth";
+import { redirect } from "next/navigation";
+
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import { prisma } from "@/lib/prisma";
@@ -30,11 +33,11 @@ async function TicketList() {
 
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                 <span className="inline-block rounded-md bg-blue-100 px-3 py-1 font-medium text-blue-700">
-                    {ticket.status}
+                  {ticket.status}
                 </span>
 
                 <span className="inline-block rounded-md bg-gray-100 px-3 py-1 font-medium text-gray-700">
-                    {ticket.priority}
+                  {ticket.priority}
                 </span>
               </div>
             </div>
@@ -45,7 +48,13 @@ async function TicketList() {
   );
 }
 
-export default function InboxPage() {
+async function ProtectedInbox() {
+  const session = await auth();
+
+  if (!session?.user) {
+    redirect("/login");
+  }
+
   return (
     <div className="flex min-h-screen gap-4 bg-[#4f6bff] p-4">
       <Sidebar />
@@ -72,5 +81,19 @@ export default function InboxPage() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function InboxPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#4f6bff] text-white">
+          Loading inbox...
+        </div>
+      }
+    >
+      <ProtectedInbox />
+    </Suspense>
   );
 }

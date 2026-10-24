@@ -1,13 +1,22 @@
 
 import { Suspense } from "react";
+import { auth } from "@/auth";
+import { redirect } from "next/navigation";
+
 import StatCard from "@/components/dashboard/StatCard";
 import TicketStats from "@/components/dashboard/TicketStats";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 
-export default function Home() {
+async function ProtectedOverview() {
+  const session = await auth();
+
+  if (!session?.user) {
+    redirect("/login");
+  }
+
   return (
-    <div className="flex min-h-screen bg-[#4f6bff] p-4 gap-4">
+    <div className="flex min-h-screen gap-4 bg-[#4f6bff] p-4">
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col gap-4">
@@ -38,5 +47,19 @@ export default function Home() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function OverviewPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#4f6bff] text-white">
+          Loading dashboard...
+        </div>
+      }
+    >
+      <ProtectedOverview />
+    </Suspense>
   );
 }

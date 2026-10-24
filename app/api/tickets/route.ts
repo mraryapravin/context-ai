@@ -1,11 +1,25 @@
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
 
-
-// GET FUNCTION
+// GET — Only logged-in staff can view tickets
 export async function GET() {
   try {
-    const tickets = await prisma.ticket.findMany();
+    const session = await auth();
+
+    if (!session?.user) {
+      return NextResponse.json(
+        { error: "Unauthorised. Staff login required." },
+        { status: 401 }
+      );
+    }
+
+    const tickets = await prisma.ticket.findMany({
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
     return NextResponse.json(tickets);
   } catch (error) {
@@ -18,9 +32,7 @@ export async function GET() {
   }
 }
 
-
-// POST FUNCTION
-
+// POST — Customers can submit tickets without logging in
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -39,6 +51,20 @@ export async function POST(request: Request) {
       );
     }
 
+    if (title.trim().length > 200) {
+      return NextResponse.json(
+        { error: "Title must be 200 characters or fewer" },
+        { status: 400 }
+      );
+    }
+
+    if (description.trim().length > 5000) {
+      return NextResponse.json(
+        { error: "Description must be 5000 characters or fewer" },
+        { status: 400 }
+      );
+    }
+
     const ticket = await prisma.ticket.create({
       data: {
         title: title.trim(),
@@ -50,7 +76,13 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json(ticket, { status: 201 });
+    return NextResponse.json(
+      {
+        message: "Ticket submitted successfully",
+        ticketId: ticket.id,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("Failed to create ticket:", error);
 
