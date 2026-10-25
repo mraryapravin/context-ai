@@ -25,11 +25,32 @@ model Ticket {
   aiRecommendedActions     String[] @default([])
   aiCommunicationGuidance  String?
 
-  // Calculated priority score
+  // Calculated priority score (future feature)
   priorityScore Float?
+
+  // Hashed private access token for the customer
+  customerAccessTokenHash String? @unique
+
+  // Conversation history
+  messages TicketMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model TicketMessage {
+  id         String   @id @default(cuid())
+  ticketId   String
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  // CUSTOMER or STAFF
+  authorType String
+  authorName String?
+  body       String   @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
 }
 
 model StaffUser {

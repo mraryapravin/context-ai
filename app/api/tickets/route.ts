@@ -1,10 +1,12 @@
 
 import { NextResponse } from "next/server";
+import { randomBytes, createHash } from "node:crypto";
+
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { classifyTicket } from "@/lib/ai/classify-ticket";
 
-// GET — Only logged-in staff can view tickets
+// GET — Only logged-in staff can view all tickets
 export async function GET() {
   try {
     const session = await auth();
@@ -91,8 +93,15 @@ export async function POST(request: Request) {
         ? priority
         : "MEDIUM";
 
-    // Attempt AI classification before saving the ticket.
-    // If the AI service fails, the customer can still submit.
+    // Generate a secure, unpredictable customer access token.
+    const accessToken = randomBytes(32).toString("hex");
+
+    // Store the hash, never the original token.
+    const accessTokenHash = createHash("sha256")
+      .update(accessToken)
+      .digest("hex");
+
+    // AI failure must not prevent ticket submission.
     let classification = null;
 
     try {
@@ -109,6 +118,7 @@ export async function POST(request: Request) {
         title: cleanTitle,
         description: cleanDescription,
         priority: customerPriority,
+        customerAccessTokenHash: accessTokenHash,
 
         aiUrgency: classification?.urgency ?? null,
         aiSentiment: classification?.sentiment ?? null,
@@ -116,9 +126,10 @@ export async function POST(request: Request) {
           classification?.escalationRisk ?? null,
         aiReason: classification?.reason ?? null,
         aiSummary: classification?.summary ?? null,
-        aiRecommendedActions: classification?.recommendedActions ?? [],
+        aiRecommendedActions:
+          classification?.recommendedActions ?? [],
         aiCommunicationGuidance:
-        classification?.communicationGuidance ?? null,
+          classification?.communicationGuidance ?? null,
       },
     });
 
@@ -126,6 +137,7 @@ export async function POST(request: Request) {
       {
         message: "Ticket submitted successfully",
         ticketId: ticket.id,
+        accessToken,
       },
       { status: 201 }
     );

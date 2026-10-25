@@ -7,6 +7,7 @@ import { redirect, notFound } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import StatusSelector from "@/components/tickets/StatusSelector";
+import TicketConversation from "@/components/tickets/TicketConversation";
 import { prisma } from "@/lib/prisma";
 
 type TicketPageProps = {
@@ -96,7 +97,6 @@ async function ProtectedTicketDetails({
 
         <main className="flex-1">
           <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.8fr)_minmax(300px,1fr)]">
-
             {/* LEFT: CUSTOMER TICKET */}
             <section className="h-full min-w-0 rounded-xl bg-white p-6">
               <Link
@@ -113,11 +113,14 @@ async function ProtectedTicketDetails({
 
                 <p className="mt-2 text-sm text-gray-500">
                   Submitted{" "}
-                  {ticket.createdAt.toLocaleDateString("en-GB", {
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
+                  {ticket.createdAt.toLocaleDateString(
+                    "en-GB",
+                    {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    }
+                  )}
                 </p>
 
                 <span
@@ -130,16 +133,26 @@ async function ProtectedTicketDetails({
                 </span>
               </div>
 
+              {/* ORIGINAL TICKET DESCRIPTION */}
               <div className="mt-8 border-t border-gray-200 pt-6">
                 <h3 className="text-sm font-semibold text-gray-700">
                   Description
                 </h3>
 
-                <p className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-5 text-sm leading-7 text-gray-800">
+                <p className="mt-3 whitespace-pre-wrap wrap-break-word rounded-lg bg-gray-50 p-5 text-sm leading-7 text-gray-800">
                   {ticket.description}
                 </p>
               </div>
 
+              {/* TWO-WAY CONVERSATION */}
+              <div className="mt-8 border-t border-gray-200 pt-6">
+                <TicketConversation
+                  ticketId={ticket.id}
+                  mode="staff"
+                />
+              </div>
+
+              {/* STATUS MANAGEMENT */}
               <div className="mt-8 border-t border-gray-200 pt-6">
                 <h3 className="text-sm font-semibold text-gray-700">
                   Current Status
@@ -182,14 +195,13 @@ async function ProtectedTicketDetails({
 
               {hasAiAnalysis ? (
                 <div className="mt-6 space-y-5">
-
                   {/* ISSUE SUMMARY */}
                   <div className="rounded-lg bg-gray-50 p-4">
                     <h4 className="text-sm font-semibold text-gray-900">
                       Issue Summary
                     </h4>
 
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-gray-700">
+                    <p className="mt-2 whitespace-pre-wrap wrap-break-word text-sm leading-6 text-gray-700">
                       {ticket.aiSummary ??
                         "No AI summary available for this ticket."}
                     </p>
@@ -220,7 +232,7 @@ async function ProtectedTicketDetails({
                         Assessment Rationale
                       </h4>
 
-                      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-gray-700">
+                      <p className="mt-2 whitespace-pre-wrap wrap-break-word text-sm leading-6 text-gray-700">
                         {ticket.aiReason}
                       </p>
                     </div>
@@ -232,15 +244,19 @@ async function ProtectedTicketDetails({
                       Recommended Actions
                     </h4>
 
-                    {(ticket.aiRecommendedActions?.length ?? 0) > 0 ? (
+                    {(ticket.aiRecommendedActions?.length ??
+                      0) > 0 ? (
                       <ol className="mt-3 list-decimal space-y-3 pl-5 text-sm leading-6 text-gray-700 marker:font-semibold marker:text-indigo-600">
-                        {(ticket.aiRecommendedActions ?? []).map(
-                          (action, index) => (
-                            <li key={index} className="pl-1">
-                              {action}
-                            </li>
-                          )
-                        )}
+                        {(
+                          ticket.aiRecommendedActions ?? []
+                        ).map((action, index) => (
+                          <li
+                            key={index}
+                            className="pl-1"
+                          >
+                            {action}
+                          </li>
+                        ))}
                       </ol>
                     ) : (
                       <p className="mt-2 text-sm text-gray-500">
@@ -255,7 +271,7 @@ async function ProtectedTicketDetails({
                       Customer Communication Guidance
                     </h4>
 
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-gray-700">
+                    <p className="mt-2 whitespace-pre-wrap wrap-break-word text-sm leading-6 text-gray-700">
                       {ticket.aiCommunicationGuidance ??
                         "No communication guidance available."}
                     </p>
@@ -263,9 +279,10 @@ async function ProtectedTicketDetails({
 
                   {/* DISCLAIMER */}
                   <p className="text-xs leading-5 text-gray-400">
-                    AI-generated recommendations may be inaccurate.
-                    Support agents should verify information and
-                    review suggested actions before proceeding.
+                    AI-generated recommendations may be
+                    inaccurate. Support agents should
+                    verify information and review
+                    suggested actions before proceeding.
                   </p>
                 </div>
               ) : (
@@ -275,14 +292,13 @@ async function ProtectedTicketDetails({
                   </p>
 
                   <p className="mt-2 text-sm leading-6 text-gray-500">
-                    This ticket may predate AI classification,
-                    or the classification service may have
+                    This ticket may predate AI
+                    classification, or the
+                    classification service may have
                     been unavailable.
                   </p>
                 </div>
               )}
-
-              {/* Priority scoring will be added here later */}
             </aside>
           </div>
         </main>
