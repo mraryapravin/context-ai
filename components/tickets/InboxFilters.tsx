@@ -105,7 +105,7 @@ export default function InboxFilters({
             htmlFor="customer-priority-filter"
             className="block text-sm font-semibold text-gray-700"
           >
-            Customer Priority
+            Priority
           </label>
 
           <select

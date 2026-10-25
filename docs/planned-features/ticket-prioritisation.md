@@ -64,3 +64,20 @@ I also want to test whether the scoring system produces sensible results across 
 **Planned — not yet implemented.**
 
 The existing AI classification system provides a starting point, but the scoring formula, ticket ranking and interface changes still need to be built and tested.
+
+
+
+## Initial idea for socring algorithm
+
+\[
+S = 0.45U + 0.25E + 0.15C + 0.15A
+\]
+
+
+Factor and weight
+AI urgency (U)	: 45%
+Escalation risk (E)	: 25%
+Customer priority (C) : 15%
+Ticket age (A) : 15%
+
+So each factor would be converted to a value between 0 and 100.
