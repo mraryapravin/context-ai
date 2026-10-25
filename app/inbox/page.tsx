@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import InboxFilters from "@/components/tickets/InboxFilters";
 import { prisma } from "@/lib/prisma";
+import { rankTickets } from "@/lib/tickets/priority-scoring";
 
 type TicketFilter =
   | "ALL"
@@ -178,6 +179,8 @@ async function TicketList({
       description: true,
       status: true,
       priority: true,
+      aiUrgency: true,
+      aiEscalationRisk: true,
       createdAt: true,
       messages: {
         orderBy: [
@@ -298,6 +301,27 @@ async function TicketList({
     }
   );
 
+  // Rank only tickets matching the active filters.
+  // rankTickets excludes resolved tickets automatically.
+  const recommendedTickets = rankTickets(
+    filteredTickets.map((ticket) => ({
+      ...ticket,
+
+      // If the customer replied most recently, measure
+      // waiting time from that reply.
+      // Otherwise the scoring function gives waiting
+      // time a value of zero after a staff response.
+      latestCustomerMessageAt:
+        ticket.latestMessage?.authorType === "CUSTOMER"
+          ? ticket.latestMessage.createdAt
+          : null,
+
+      latestMessageAuthorType:
+        ticket.latestMessage?.authorType ?? null,
+    })),
+    new Date()
+  ).slice(0, 5);
+
   const visibleColumns = priorityColumns.filter(
     (column) =>
       selectedPriority === "ALL" ||
@@ -344,7 +368,152 @@ async function TicketList({
         </span>
       </div>
 
-      {/* PRIORITY COLUMNS */}
+      {/* AI-ASSISTED RECOMMENDED HANDLING ORDER */}
+      <section
+        aria-label="Recommended handling order"
+        className="mt-5 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 sm:p-5"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              Recommended handling order
+            </h2>
+
+            <p className="mt-1 text-sm text-gray-600">
+              Top 5 unresolved tickets ranked using AI
+              urgency, escalation risk, customer priority
+              and waiting time.
+            </p>
+          </div>
+
+          <span className="rounded-lg bg-indigo-100 px-3 py-1.5 text-xs font-semibold text-indigo-800">
+            AI-assisted ranking
+          </span>
+        </div>
+
+        <p className="mt-3 text-xs text-gray-500">
+          Recommendations follow your selected filters.
+          Scores are relative ranking values, not
+          probabilities. Human review is required.
+        </p>
+
+        {recommendedTickets.length === 0 ? (
+          <div className="mt-4 rounded-lg border border-dashed border-indigo-200 bg-white/70 px-4 py-8 text-center">
+            <p className="text-sm text-gray-500">
+              No unresolved tickets match the selected
+              filters.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {recommendedTickets.map((ticket, index) => {
+              const breakdown = ticket.priorityBreakdown;
+
+              return (
+                <Link
+                  key={ticket.id}
+                  href={`/inbox/${ticket.id}`}
+                  className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:border-indigo-400 hover:shadow-md sm:flex-row sm:items-center"
+                >
+                  {/* RANK */}
+                  <div className="flex shrink-0 items-center justify-center rounded-lg bg-indigo-100 px-3 py-2 text-sm font-bold text-indigo-800 sm:h-11 sm:w-11">
+                    #{index + 1}
+                  </div>
+
+                  {/* TICKET DETAILS */}
+                  <div className="min-w-0 flex-1">
+                    <h3 className="wrap-break-word text-sm font-semibold text-gray-900">
+                      {ticket.title}
+                    </h3>
+
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                      <span>
+                        AI urgency:{" "}
+                        <strong>
+                          {ticket.aiUrgency ?? "Unavailable"}
+                        </strong>
+                      </span>
+
+                      <span>
+                        Escalation risk:{" "}
+                        <strong>
+                          {ticket.aiEscalationRisk ??
+                            "Unavailable"}
+                        </strong>
+                      </span>
+
+                      <span>
+                        Customer priority:{" "}
+                        <strong>{ticket.priority}</strong>
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-md px-2 py-1 text-xs font-medium ${
+                          statusBadgeStyles[ticket.status] ??
+                          "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {formatStatus(ticket.status)}
+                      </span>
+
+                      {ticket.replyState === "NEEDS_STAFF" && (
+                        <span className="rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-800">
+                          {ticket.latestMessage
+                            ? "Needs Staff Reply"
+                            : "Awaiting First Reply"}
+                        </span>
+                      )}
+
+                      {ticket.replyState ===
+                        "WAITING_CUSTOMER" && (
+                        <span className="rounded-md bg-indigo-100 px-2 py-1 text-xs font-medium text-indigo-800">
+                          Awaiting Customer
+                        </span>
+                      )}
+
+                      {breakdown.missingAiData && (
+                        <span className="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                          AI fallback used
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* EXPLAINABLE SCORE */}
+                  <div className="shrink-0 sm:text-right">
+                    <p className="text-xl font-bold text-indigo-700">
+                      {breakdown.score.toFixed(1)}
+                      <span className="text-sm font-normal text-gray-500">
+                        /100
+                      </span>
+                    </p>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      Ranking score
+                    </p>
+
+                    <p className="mt-2 text-xs text-gray-500">
+                      U {breakdown.urgencyScore} ·
+                      E {breakdown.escalationScore} ·
+                      C {breakdown.customerScore} ·
+                      W {breakdown.waitingScore.toFixed(0)}
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
+        <p className="mt-4 text-xs text-gray-500">
+          Score weights: urgency 45% · escalation 25% ·
+          customer priority 15% · waiting time 15%
+        </p>
+      </section>
+
+      {/* EXISTING CUSTOMER-PRIORITY COLUMNS */}
       <div
         className={`mt-5 grid grid-cols-1 items-start gap-4 ${
           visibleColumns.length === 3
