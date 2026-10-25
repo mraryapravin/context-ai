@@ -21,12 +21,19 @@ export type PriorityBreakdown = {
   missingAiData: boolean;
 };
 
-export const PRIORITY_WEIGHTS = {
+export type PriorityWeights = {
+  urgency: number;
+  escalation: number;
+  customer: number;
+  waiting: number;
+};
+
+export const PRIORITY_WEIGHTS: PriorityWeights = {
   urgency: 0.45,
   escalation: 0.25,
   customer: 0.15,
   waiting: 0.15,
-} as const;
+};
 
 const LEVEL_SCORES: Record<PriorityLevel, number> = {
   LOW: 20,
@@ -77,7 +84,8 @@ function calculateWaitingScore(
 
 export function calculatePriorityScore(
   ticket: PriorityTicket,
-  now: Date = new Date()
+  now: Date = new Date(),
+  weights: PriorityWeights = PRIORITY_WEIGHTS
 ): PriorityBreakdown {
   const customerScore =
     toLevelScore(ticket.priority) ?? 60;
@@ -94,16 +102,13 @@ export function calculatePriorityScore(
     urgencyValue === null ||
     escalationValue === null;
 
-  // If AI analysis is unavailable, fall back to
-  // the customer's priority instead of crashing.
+  // Use customer priority when an AI signal is missing.
   const urgencyScore =
     urgencyValue ?? customerScore;
 
   const escalationScore =
     escalationValue ?? customerScore;
 
-  // Once staff have replied, the customer is no
-  // longer waiting for an initial staff response.
   const waitingForStaff =
     ticket.latestMessageAuthorType !== "STAFF";
 
@@ -116,10 +121,10 @@ export function calculatePriorityScore(
     : 0;
 
   const rawScore =
-    PRIORITY_WEIGHTS.urgency * urgencyScore +
-    PRIORITY_WEIGHTS.escalation * escalationScore +
-    PRIORITY_WEIGHTS.customer * customerScore +
-    PRIORITY_WEIGHTS.waiting * waitingScore;
+    weights.urgency * urgencyScore +
+    weights.escalation * escalationScore +
+    weights.customer * customerScore +
+    weights.waiting * waitingScore;
 
   const score = Math.round(rawScore * 100) / 100;
 
@@ -135,7 +140,8 @@ export function calculatePriorityScore(
 
 export function rankTickets<T extends PriorityTicket>(
   tickets: T[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  weights: PriorityWeights = PRIORITY_WEIGHTS
 ): Array<T & { priorityBreakdown: PriorityBreakdown }> {
   return tickets
     .filter((ticket) => ticket.status !== "RESOLVED")
@@ -143,7 +149,8 @@ export function rankTickets<T extends PriorityTicket>(
       ...ticket,
       priorityBreakdown: calculatePriorityScore(
         ticket,
-        now
+        now,
+        weights
       ),
     }))
     .sort((a, b) => {
@@ -155,8 +162,7 @@ export function rankTickets<T extends PriorityTicket>(
         return scoreDifference;
       }
 
-      // Deterministic tie-breaking:
-      // older tickets first, then ticket ID.
+      // Older tickets win score ties.
       const ageDifference =
         a.createdAt.getTime() -
         b.createdAt.getTime();
@@ -165,6 +171,7 @@ export function rankTickets<T extends PriorityTicket>(
         return ageDifference;
       }
 
+      // Final deterministic tie-breaker.
       return a.id.localeCompare(b.id);
     });
 }
