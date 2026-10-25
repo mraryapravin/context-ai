@@ -5,38 +5,40 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 
 import Sidebar from "@/components/layout/Sidebar";
+import InboxFilters from "@/components/tickets/InboxFilters";
 import { prisma } from "@/lib/prisma";
 
-type TicketFilter = "ALL" | "OPEN" | "IN_PROGRESS" | "RESOLVED";
-type PriorityFilter = "ALL" | "LOW" | "MEDIUM" | "HIGH";
+type TicketFilter =
+  | "ALL"
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "RESOLVED";
+
+type PriorityFilter =
+  | "ALL"
+  | "LOW"
+  | "MEDIUM"
+  | "HIGH";
+
 type TicketPriority = "LOW" | "MEDIUM" | "HIGH";
+
+type ReplyFilter =
+  | "ALL"
+  | "NEEDS_STAFF"
+  | "WAITING_CUSTOMER";
+
+type ReplyState =
+  | "NEEDS_STAFF"
+  | "WAITING_CUSTOMER"
+  | "RESOLVED";
 
 type InboxPageProps = {
   searchParams: Promise<{
     status?: string | string[];
     priority?: string | string[];
+    reply?: string | string[];
   }>;
 };
-
-const statusFilters: {
-  value: TicketFilter;
-  label: string;
-}[] = [
-  { value: "ALL", label: "All Tickets" },
-  { value: "OPEN", label: "Open" },
-  { value: "IN_PROGRESS", label: "In Progress" },
-  { value: "RESOLVED", label: "Resolved" },
-];
-
-const priorityFilters: {
-  value: PriorityFilter;
-  label: string;
-}[] = [
-  { value: "ALL", label: "All Priorities" },
-  { value: "LOW", label: "Low" },
-  { value: "MEDIUM", label: "Medium" },
-  { value: "HIGH", label: "High" },
-];
 
 const priorityColumns: {
   value: TicketPriority;
@@ -54,7 +56,8 @@ const priorityColumns: {
     containerStyle: "border-green-200 bg-green-50/70",
     headingStyle: "text-green-900",
     countStyle: "bg-green-200 text-green-900",
-    cardStyle: "border-green-200 bg-white hover:border-green-400",
+    cardStyle:
+      "border-green-200 bg-white hover:border-green-400",
   },
   {
     value: "MEDIUM",
@@ -63,7 +66,8 @@ const priorityColumns: {
     containerStyle: "border-amber-200 bg-amber-50/70",
     headingStyle: "text-amber-900",
     countStyle: "bg-amber-200 text-amber-900",
-    cardStyle: "border-amber-200 bg-white hover:border-amber-400",
+    cardStyle:
+      "border-amber-200 bg-white hover:border-amber-400",
   },
   {
     value: "HIGH",
@@ -72,7 +76,8 @@ const priorityColumns: {
     containerStyle: "border-red-200 bg-red-50/70",
     headingStyle: "text-red-900",
     countStyle: "bg-red-200 text-red-900",
-    cardStyle: "border-red-200 bg-white hover:border-red-400",
+    cardStyle:
+      "border-red-200 bg-white hover:border-red-400",
   },
 ];
 
@@ -87,56 +92,69 @@ function formatStatus(status: string) {
     .toLowerCase()
     .split("_")
     .map(
-      (word) => word.charAt(0).toUpperCase() + word.slice(1)
+      (word) =>
+        word.charAt(0).toUpperCase() + word.slice(1)
     )
     .join(" ");
 }
 
 function getStatusFilter(
-  status: string | string[] | undefined
+  value: string | string[] | undefined
 ): TicketFilter {
   if (
-    status === "OPEN" ||
-    status === "IN_PROGRESS" ||
-    status === "RESOLVED"
+    value === "OPEN" ||
+    value === "IN_PROGRESS" ||
+    value === "RESOLVED"
   ) {
-    return status;
+    return value;
   }
 
   return "ALL";
 }
 
 function getPriorityFilter(
-  priority: string | string[] | undefined
+  value: string | string[] | undefined
 ): PriorityFilter {
   if (
-    priority === "LOW" ||
-    priority === "MEDIUM" ||
-    priority === "HIGH"
+    value === "LOW" ||
+    value === "MEDIUM" ||
+    value === "HIGH"
   ) {
-    return priority;
+    return value;
   }
 
   return "ALL";
 }
 
-function filterHref(
-  status: TicketFilter,
-  priority: PriorityFilter
-) {
-  const params = new URLSearchParams();
-
-  if (status !== "ALL") {
-    params.set("status", status);
+function getReplyFilter(
+  value: string | string[] | undefined
+): ReplyFilter {
+  if (
+    value === "NEEDS_STAFF" ||
+    value === "WAITING_CUSTOMER"
+  ) {
+    return value;
   }
 
-  if (priority !== "ALL") {
-    params.set("priority", priority);
+  return "ALL";
+}
+
+function getReplyState(
+  ticketStatus: string,
+  latestAuthorType: string | null
+): ReplyState {
+  if (ticketStatus === "RESOLVED") {
+    return "RESOLVED";
   }
 
-  const query = params.toString();
+  if (
+    latestAuthorType === null ||
+    latestAuthorType === "CUSTOMER"
+  ) {
+    return "NEEDS_STAFF";
+  }
 
-  return query ? `/inbox?${query}` : "/inbox";
+  return "WAITING_CUSTOMER";
 }
 
 async function TicketList({
@@ -145,15 +163,50 @@ async function TicketList({
   const params = await searchParams;
 
   const selectedStatus = getStatusFilter(params.status);
-  const selectedPriority = getPriorityFilter(params.priority);
+  const selectedPriority = getPriorityFilter(
+    params.priority
+  );
+  const selectedReply = getReplyFilter(params.reply);
 
   const tickets = await prisma.ticket.findMany({
     orderBy: {
       createdAt: "desc",
     },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      status: true,
+      priority: true,
+      createdAt: true,
+      messages: {
+        orderBy: [
+          { createdAt: "desc" },
+          { id: "desc" },
+        ],
+        take: 1,
+        select: {
+          authorType: true,
+          createdAt: true,
+        },
+      },
+    },
   });
 
-  // Status counts respect the selected priority.
+  const ticketsWithReplyState = tickets.map((ticket) => {
+    const latestMessage = ticket.messages[0] ?? null;
+
+    return {
+      ...ticket,
+      latestMessage,
+      replyState: getReplyState(
+        ticket.status,
+        latestMessage?.authorType ?? null
+      ),
+    };
+  });
+
+  // Each count respects the other two filters.
   const statusCounts: Record<TicketFilter, number> = {
     ALL: 0,
     OPEN: 0,
@@ -161,7 +214,6 @@ async function TicketList({
     RESOLVED: 0,
   };
 
-  // Priority counts respect the selected status.
   const priorityCounts: Record<PriorityFilter, number> = {
     ALL: 0,
     LOW: 0,
@@ -169,11 +221,26 @@ async function TicketList({
     HIGH: 0,
   };
 
-  for (const ticket of tickets) {
-    if (
+  const replyCounts: Record<ReplyFilter, number> = {
+    ALL: 0,
+    NEEDS_STAFF: 0,
+    WAITING_CUSTOMER: 0,
+  };
+
+  for (const ticket of ticketsWithReplyState) {
+    const matchesStatus =
+      selectedStatus === "ALL" ||
+      ticket.status === selectedStatus;
+
+    const matchesPriority =
       selectedPriority === "ALL" ||
-      ticket.priority === selectedPriority
-    ) {
+      ticket.priority === selectedPriority;
+
+    const matchesReply =
+      selectedReply === "ALL" ||
+      ticket.replyState === selectedReply;
+
+    if (matchesPriority && matchesReply) {
       statusCounts.ALL += 1;
 
       if (
@@ -185,10 +252,7 @@ async function TicketList({
       }
     }
 
-    if (
-      selectedStatus === "ALL" ||
-      ticket.status === selectedStatus
-    ) {
+    if (matchesStatus && matchesReply) {
       priorityCounts.ALL += 1;
 
       if (
@@ -199,19 +263,40 @@ async function TicketList({
         priorityCounts[ticket.priority] += 1;
       }
     }
+
+    if (matchesStatus && matchesPriority) {
+      replyCounts.ALL += 1;
+
+      if (
+        ticket.replyState === "NEEDS_STAFF" ||
+        ticket.replyState === "WAITING_CUSTOMER"
+      ) {
+        replyCounts[ticket.replyState] += 1;
+      }
+    }
   }
 
-  const filteredTickets = tickets.filter((ticket) => {
-    const matchesStatus =
-      selectedStatus === "ALL" ||
-      ticket.status === selectedStatus;
+  const filteredTickets = ticketsWithReplyState.filter(
+    (ticket) => {
+      const matchesStatus =
+        selectedStatus === "ALL" ||
+        ticket.status === selectedStatus;
 
-    const matchesPriority =
-      selectedPriority === "ALL" ||
-      ticket.priority === selectedPriority;
+      const matchesPriority =
+        selectedPriority === "ALL" ||
+        ticket.priority === selectedPriority;
 
-    return matchesStatus && matchesPriority;
-  });
+      const matchesReply =
+        selectedReply === "ALL" ||
+        ticket.replyState === selectedReply;
+
+      return (
+        matchesStatus &&
+        matchesPriority &&
+        matchesReply
+      );
+    }
+  );
 
   const visibleColumns = priorityColumns.filter(
     (column) =>
@@ -221,6 +306,7 @@ async function TicketList({
 
   return (
     <div className="min-w-0 rounded-xl bg-white p-5 sm:p-6">
+      {/* HEADER */}
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">
           Ticket Inbox
@@ -231,101 +317,15 @@ async function TicketList({
         </p>
       </div>
 
-      {/* STATUS FILTERS */}
-      <div className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold text-gray-700">
-          Ticket Status
-        </h2>
-
-        <nav
-          aria-label="Filter tickets by status"
-          className="flex flex-wrap gap-2"
-        >
-          {statusFilters.map((filter) => {
-            const isActive =
-              selectedStatus === filter.value;
-
-            return (
-              <Link
-                key={filter.value}
-                href={filterHref(
-                  filter.value,
-                  selectedPriority
-                )}
-                aria-current={
-                  isActive ? "page" : undefined
-                }
-                className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition ${
-                  isActive
-                    ? "border-[#4f6bff] bg-[#4f6bff] text-white"
-                    : "border-gray-200 bg-gray-50 text-gray-700 hover:border-[#4f6bff] hover:bg-blue-50"
-                }`}
-              >
-                {filter.label}
-
-                <span
-                  className={`rounded-md px-2 py-0.5 text-xs ${
-                    isActive
-                      ? "bg-white/20 text-white"
-                      : "bg-gray-200 text-gray-700"
-                  }`}
-                >
-                  {statusCounts[filter.value]}
-                </span>
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* PRIORITY FILTERS */}
-      <div className="mt-5 border-b border-gray-200 pb-6">
-        <h2 className="mb-3 text-sm font-semibold text-gray-700">
-          Customer Priority
-        </h2>
-
-        <nav
-          aria-label="Filter tickets by priority"
-          className="flex flex-wrap gap-2"
-        >
-          {priorityFilters.map((filter) => {
-            const isActive =
-              selectedPriority === filter.value;
-
-            return (
-              <Link
-                key={filter.value}
-                href={filterHref(
-                  selectedStatus,
-                  filter.value
-                )}
-                aria-current={
-                  isActive ? "page" : undefined
-                }
-                className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition ${
-                  isActive
-                    ? "border-[#4f6bff] bg-[#4f6bff] text-white"
-                    : "border-gray-200 bg-gray-50 text-gray-700 hover:border-[#4f6bff] hover:bg-blue-50"
-                }`}
-              >
-                {filter.label}
-
-                {filter.value !== "ALL" && (
-                <span
-                  className={`rounded-md px-2 py-0.5 text-xs ${
-                    isActive
-                      ? "bg-white/20 text-white"
-                      : "bg-gray-200 text-gray-700"
-                  }`}
-                >
-                  {priorityCounts[filter.value]}
-                </span>
-              )}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
+      {/* COMPACT DROPDOWN FILTERS */}
+      <InboxFilters
+        status={selectedStatus}
+        priority={selectedPriority}
+        reply={selectedReply}
+        statusCounts={statusCounts}
+        priorityCounts={priorityCounts}
+        replyCounts={replyCounts}
+      />
 
       {/* RESULTS SUMMARY */}
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
@@ -364,6 +364,7 @@ async function TicketList({
               aria-label={`${column.label} tickets`}
               className={`min-w-0 rounded-xl border p-4 ${column.containerStyle}`}
             >
+              {/* COLUMN HEADER */}
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2
@@ -384,6 +385,7 @@ async function TicketList({
                 </span>
               </div>
 
+              {/* TICKET CARDS */}
               <div
                 className={`mt-5 ${
                   visibleColumns.length === 1
@@ -419,6 +421,7 @@ async function TicketList({
                       </p>
 
                       <div className="mt-4 flex flex-wrap items-center gap-2">
+                        {/* TICKET STATUS */}
                         <span
                           className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
                             statusBadgeStyles[ticket.status] ??
@@ -427,9 +430,38 @@ async function TicketList({
                         >
                           {formatStatus(ticket.status)}
                         </span>
+
+                        {/* REPLY STATUS */}
+                        {ticket.replyState ===
+                          "NEEDS_STAFF" && (
+                          <span className="rounded-md bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800">
+                            {ticket.latestMessage
+                              ? "Needs Staff Reply"
+                              : "Awaiting First Reply"}
+                          </span>
+                        )}
+
+                        {ticket.replyState ===
+                          "WAITING_CUSTOMER" && (
+                          <span className="rounded-md bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-800">
+                            Awaiting Customer
+                          </span>
+                        )}
                       </div>
 
+                      {/* LATEST ACTIVITY */}
+                      {ticket.latestMessage && (
+                        <p className="mt-3 text-xs text-gray-500">
+                          Last reply:{" "}
+                          {ticket.latestMessage.authorType ===
+                          "CUSTOMER"
+                            ? "Customer"
+                            : "Staff"}
+                        </p>
+                      )}
+
                       <p className="mt-3 text-xs text-gray-400">
+                        Submitted{" "}
                         {ticket.createdAt.toLocaleDateString(
                           "en-GB",
                           {
